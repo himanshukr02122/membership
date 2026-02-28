@@ -1,4 +1,11 @@
-from fastapi import FastAPI, Path, Body
+from fastapi import FastAPI, Path, Body, Depends
+import models
+from database import engine
+from sqlalchemy.orm import Session
+from typing import Annotated
+from helpers import get_db
+from starlette import status
+from pydantic import BaseModel
 
 MEMBERS = [
     { "id": 1, "name": "Himanshu", "age": 26, "gender": "M", "marital_status": "unmarried"},
@@ -9,12 +16,22 @@ MEMBERS = [
     
 ]
 
+class Member_Body(BaseModel):
+    name: str
+    age: int
+    gender: str
+    marital_status: str
+    active: bool
+
 app = FastAPI()
 
+models.Base.metadata.create_all(bind=engine)
+db_dependency = Annotated[Session, Depends(get_db)]
+
 # get method
-@app.get("/members")
-async def get_all_members():
-    return MEMBERS
+@app.get("/members", status_code=status.HTTP_200_OK)
+async def get_all_members(db: db_dependency):
+    return db.query(models.Members).all()
 
 @app.get("/members/{member_id}")
 async def get_members_by_id(member_id: int = Path(gt=0)):
@@ -25,15 +42,17 @@ async def get_members_by_id(member_id: int = Path(gt=0)):
         return "Member with the given id is not present."
     
 @app.post("/members/create-member")
-async def create_new_member(new_member_request= Body()):
-    MEMBERS.append(new_member_request)
+async def create_new_member(new_member_request: Member_Body, db: db_dependency):
+    member_model = models.Members(**new_member_request.model_dump())
+    db.add(member_model)
+    db.commit()
 
 @app.put("/members/update-member")
 async def update_member(updated_member= Body()):
     for i in range(len(MEMBERS)):
         if MEMBERS[i].get("id") == updated_member.get("id"):
             MEMBERS[i] = updated_member
-            return f"member with id {updated_member.get("id")} is updated successfully!"
+            return f"member with id {updated_member.get('id')} is updated successfully!"
     else:
         return "Member with the given id is not present."
     
