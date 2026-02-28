@@ -1,11 +1,12 @@
-from fastapi import FastAPI, Path, Body, Depends
+from fastapi import FastAPI, Path, Body, Depends, HTTPException
 import models
 from database import engine
 from sqlalchemy.orm import Session
 from typing import Annotated
 from helpers import get_db
 from starlette import status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from enum import Enum
 
 MEMBERS = [
     { "id": 1, "name": "Himanshu", "age": 26, "gender": "M", "marital_status": "unmarried"},
@@ -16,10 +17,15 @@ MEMBERS = [
     
 ]
 
+class GenderEnum(str, Enum):
+    M = "M"
+    F = "F"
+    O = "O"
+
 class Member_Body(BaseModel):
-    name: str
-    age: int
-    gender: str
+    name: str = Field(min_length=3)
+    age: int = Field(min= 18, max=60)
+    gender: GenderEnum
     marital_status: str
     active: bool
 
@@ -43,9 +49,17 @@ async def get_members_by_id(member_id: int = Path(gt=0)):
     
 @app.post("/members/create-member")
 async def create_new_member(new_member_request: Member_Body, db: db_dependency):
-    member_model = models.Members(**new_member_request.model_dump())
-    db.add(member_model)
-    db.commit()
+    try:
+        member_model = models.Members(**new_member_request.model_dump())
+        db.add(member_model)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
 
 @app.put("/members/update-member")
 async def update_member(updated_member= Body()):
